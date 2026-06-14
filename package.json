@@ -1,0 +1,22 @@
+{
+  "name": "fanout",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Apples-to-apples benchmark of live-update delivery across 5 transports (short poll, adaptive/debounced poll, long poll, SSE, WebSocket) with Redis pub/sub fan-out. The app is trivial; the value is rigorous measurement (latency, bandwidth, scalability).",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "server": "node src/server.js",
+    "producer": "node src/producer.js",
+    "dev": "node scripts/dev.js",
+    "smoke": "node scripts/smoke.js",
+    "check": "node --check src/server.js && node --check src/producer.js"
+  },
+  "dependencies": {
+    "fastify": "^5.8.5",
+    "ioredis": "^5.4.1",
+    "ws": "^8.18.0"
+  }
+}
