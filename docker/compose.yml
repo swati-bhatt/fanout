@@ -2,17 +2,35 @@
 #
 #   docker compose -f docker/compose.yml up -d --build
 #   ./docker/netem.sh wifi          # apply a profile
-#   node harness/netem-run.js --transport=ws --clients=500 --profile=wifi
+#   npm run netem -- --transport=ws --clients=500 --profile=wifi
 #   ./docker/netem.sh clear
 #
-# Redis stays on the HOST (already running there) and the producer/clients run on the host too, so
-# every timestamp comes from one clock. Only the server crosses into the container.
+# WHY REDIS IS IN HERE: the host's Redis binds to 127.0.0.1 with protected-mode on, so a container
+# cannot reach it. The alternative -- rebinding the host Redis to 0.0.0.0 -- would expose an
+# unauthenticated Redis to the network, which is not an acceptable price for a benchmark. So the
+# rig brings its own Redis and publishes port 6380 on the host purely so the HOST-side producer can
+# reach it. Nothing else about the host is touched.
+#
+# The producer and the load clients stay on the host so every timestamp comes from one clock; only
+# the server crosses into the container. Egress shaping on the server's eth0 therefore covers
+# server->client delivery (the direction under study); the event feed arrives as ingress from Redis
+# and is unshaped, which is what we want -- the impairment is on delivery, not on ingestion.
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: fanout-netem-redis
+    command: ["redis-server", "--save", "", "--appendonly", "no"] # in-memory only; no persistence
+    ports:
+      - "6380:6379"   # host-side producer publishes here
+    restart: "no"
+
   fanout-server:
     build:
       context: ..
       dockerfile: docker/Dockerfile
     container_name: fanout-netem
+    depends_on:
+      - redis
     # NET_ADMIN is what lets `tc qdisc` run inside the container; without it netem is refused.
     cap_add:
       - NET_ADMIN
@@ -21,10 +39,7 @@ services:
     environment:
       PORT: "3000"
       HOST: "0.0.0.0"
-      # host.docker.internal resolves to the macOS host from inside the VM
-      REDIS_URL: "redis://host.docker.internal:6379"
+      REDIS_URL: "redis://redis:6379"   # over the compose network, not the host
       INSTANCE_ID: "fanout-netem"
       CHANNEL: "${CHANNEL:-events}"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     restart: "no"

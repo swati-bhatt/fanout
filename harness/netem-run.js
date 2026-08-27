@@ -41,6 +41,10 @@ const cfg = {
   port: Number(argv.port || 3900),
   profile: argv.profile || 'unknown',
   channel: argv.channel || process.env.CHANNEL || 'events',
+  // The rig runs its own Redis (the host's binds to 127.0.0.1 with protected-mode on and is not
+  // reachable from a container). The server talks to it over the compose network; the host-side
+  // producer reaches the same instance through the published port.
+  redisUrl: argv.redisUrl || 'redis://127.0.0.1:6380',
 };
 
 if (!TRANSPORTS.includes(cfg.transport)) {
@@ -72,7 +76,7 @@ try {
   kids.push(
     spawn('node', ['src/producer.js', `--rate=${cfg.rate}`, `--bytes=${cfg.payloadBytes}`, `--channel=${cfg.channel}`], {
       cwd: ROOT,
-      env: process.env,
+      env: { ...process.env, REDIS_URL: cfg.redisUrl },
       stdio: ['ignore', 'ignore', 'pipe'],
     }),
   );
