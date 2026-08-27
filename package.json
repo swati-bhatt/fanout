@@ -12,7 +12,9 @@
     "producer": "node src/producer.js",
     "dev": "node scripts/dev.js",
     "smoke": "node scripts/smoke.js",
-    "check": "node --check src/server.js && node --check src/producer.js"
+    "check": "node --check src/server.js && node --check src/producer.js",
+    "bench": "node harness/run.js",
+    "sweep": "node harness/sweep.js"
   },
   "dependencies": {
     "fastify": "^5.8.5",
