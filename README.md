@@ -97,9 +97,12 @@ Measurement-integrity details that matter:
 
 ## Known limits (stated up front)
 
-- **Loopback ≠ WAN.** No real RTT or loss on localhost; results measure per-instance efficiency
-  and *relative* transport behavior, not internet-scale absolute throughput. Flaky-network runs
-  (loss/delay injection) require Linux `tc`/`netem` — planned via Docker.
+- **Loopback ≠ WAN.** The unimpaired sweeps have no real RTT or loss, so they measure per-instance
+  efficiency and *relative* transport behavior — not internet-scale absolute throughput. The netem
+  axis above supplies impairment, with the caveat that a container's virtual NIC adds its own
+  ~0.1–0.5ms and that shaping is egress-only.
+- **One host, one server process.** Redis fan-out means K instances *could* run, but every number
+  here is single-instance. Horizontal scaling is a design property demonstrated, not a measurement.
 - **Single-host clock.** Cross-process latency relies on a shared system clock; multi-host runs
   would need explicit clock-offset estimation.
 - Requires Node ≥ 18 and a local Redis (`redis-cli ping` → `PONG`). Everything runs locally at $0.
