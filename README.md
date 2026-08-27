@@ -42,14 +42,25 @@ npm run sweep -- --tier=full    # 75 runs, ~60-75 min: adds 5000/10000 clients a
 
 Measurement-integrity details that matter:
 
-- **Clock** — `performance.timeOrigin + performance.now()`: wall-anchored, sub-millisecond, immune
-  to mid-run NTP steps. Producer and clients share one host clock, so cross-process deltas are valid.
+- **Clock** — high-resolution monotonic time, calibrated per process against the shared system
+  clock (median of 301 `Date.now()` samples), because raw `performance.timeOrigin` carries
+  ~0.3–1.5ms of per-process error. Cross-process agreement is then bounded at ~0.5ms — the
+  instrument's resolution floor. Latencies that still measure negative are clamped to 0 and
+  **counted** (`clampedSubResolution`), never silently dropped: silent dropping once censored
+  31.8% of an SSE run's samples — all of them the fastest ones.
 - **Generator saturation is detected, not ignored** — each load worker records its own event-loop
   delay; a run where the *generator* stalled is flagged `generatorLimited` rather than silently
   reported as server latency.
-- **Byte accounting is asymmetric by design** — HTTP transports are counted at the socket level
-  (headers included: that *is* polling's cost), persistent transports as app bytes plus a
-  socket-level gauge cross-check.
+- **Byte accounting: one semantics** — the published bytes-per-client figure is socket-level wire
+  bytes for every transport (HTTP responses incl. headers; SSE/WS via a `socket.bytesWritten`
+  gauge incl. framing and heartbeats). App-level counters are kept alongside as a cross-check —
+  the two meters agree to ~1% and imply an identical ~270B header cost per HTTP response.
+- **Event-loop delay is reported as slices** — the delay histogram resets per 2s scrape, so the
+  headline is labeled `sliceMax` (worst 2s slice, upward-biased by design) with the median slice
+  published alongside; a single burst can't masquerade as typical behavior.
+- **Orphan-proof runs** — every scenario gets a bind-probed free port, and the orchestrator asserts
+  the responding server's `instanceId` matches the run it just launched — added after a leftover
+  server from a killed sweep silently served (and corrupted) a later cell's measurements.
 - **Serialize-once fan-out** — the server parses each Redis message once and reuses the original
   JSON string for every SSE/WS client, so results reflect transport overhead, not `JSON.stringify`.
 - **Calibration** — measured short-poll latency matches the analytical model (p50 ≈ interval/2,
