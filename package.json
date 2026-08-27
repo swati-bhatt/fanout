@@ -16,7 +16,8 @@
     "bench": "node harness/run.js",
     "sweep": "node harness/sweep.js",
     "aggregate": "node harness/aggregate.js",
-    "netem": "node harness/netem-run.js"
+    "netem": "node harness/netem-run.js",
+    "netem-sweep": "node harness/netem-sweep.js"
   },
   "dependencies": {
     "fastify": "^5.8.5",
