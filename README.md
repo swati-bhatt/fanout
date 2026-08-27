@@ -36,9 +36,38 @@ stats, then a recorded measurement window. Results land in `results/<runId>.json
 
 ```bash
 npm run bench -- --transport=ws --clients=2000 --rate=20 --duration=20
-npm run sweep -- --tier=mini    # 17 runs, ~12 min: 5 transports x {50,500,2000} clients + low-rate pair
-npm run sweep -- --tier=full    # 75 runs, ~60-75 min: adds 5000/10000 clients and {1,20,100} ev/s
+npm run sweep -- --tier=core  --reps=5   # headline cells: 5 transports x {50,500,2000} @20ev/s
+npm run sweep -- --tier=rate  --reps=3   # arrival-rate axis: c=500 x {1,20,100} ev/s
+npm run sweep -- --tier=scale --reps=3   # C10K frontier: {5000,10000} clients
+npm run aggregate                        # median + spread per cell, with trust gating
 ```
+
+**Replicates are interleaved, not blocked.** `--reps=5` runs every cell once, then every cell
+again, rotating the order each round — rather than five back-to-back runs of one cell. Blocked
+replicates confound a cell with whatever the machine was doing during its block; interleaving
+spreads that noise across all cells so between-transport differences survive it.
+
+`aggregate.js` reports the **median** across replicates (one contaminated run shifts a mean and
+barely moves a median — the exact failure mode that invalidated an earlier sweep) together with
+each cell's p99 min/max/spread. A cell is stamped `stable` only at n≥3 **and** spread ≤2×;
+everything else is named in a trust summary so it cannot quietly become a claim.
+
+## Flaky-network axis
+
+macOS has no `tc`/`netem`, so impairment runs put **only the server** in a Linux container —
+producer, clients, and Redis stay on the host so every timestamp comes from one clock.
+
+```bash
+docker compose -f docker/compose.yml up -d --build
+./docker/netem.sh wifi        # clean | wifi | mobile | lossy | satellite | flapping
+npm run netem -- --transport=ws --clients=500 --profile=wifi
+./docker/netem.sh clear
+```
+
+Loss is **correlated** (real networks lose in bursts; uncorrelated loss unrealistically flatters
+per-packet recovery). Packet reordering is deliberately off — TCP treats it as loss and it would
+confound the loss axis. Shaping is egress-only (server→client), so a polling transport's request
+leg stays fast: any polling disadvantage measured here is a **lower** bound.
 
 Measurement-integrity details that matter:
 
@@ -85,7 +114,9 @@ npm run dev     # leaves server + producer running for manual poking
 
 ## Status
 
-- [x] M1 — server: 5 transports, producer, Redis fan-out, metrics (verified end-to-end)
-- [x] M2 — load harness: parallel workers, warmup/measure phases, per-run JSON + sweep CSV
-- [ ] M3 — full sweep incl. flaky-network axis (netem in Docker)
-- [ ] M4 — analysis + writeup: freshness-vs-cost frontier, crossover points, decision rule
+- [x] M1 - server: 5 transports, producer, Redis fan-out, metrics (verified end-to-end)
+- [x] M2 - load harness: parallel workers, warmup/measure phases, per-run JSON + sweep CSV
+- [x] M3a - replicated sweeps (interleaved reps, median + spread, trust gating)
+- [x] M3b - flaky-network rig: containerized server + correlated-loss netem profiles
+- [ ] M3c - run the impairment matrix (profile x transport) and fold it into the dataset
+- [ ] M4 - analysis + writeup: freshness-vs-cost frontier, crossover points, decision rule
