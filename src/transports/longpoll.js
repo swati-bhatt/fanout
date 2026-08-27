@@ -25,6 +25,14 @@ export function createLongPoll(buffer) {
       fastify.get('/longpoll', (req, reply) => {
         const since = Number(req.query.since ?? -1);
 
+        // Cursor bootstrap: since<0 means "join at the live tail". A waiter registered with -1
+        // would never match (buffer.since treats <0 as the no-backfill sentinel) and hang until
+        // timeout — so hand the client its cursor immediately; it re-polls with since=tailSeq.
+        if (since < 0) {
+          reply.send({ events: [], tailSeq: buffer.tailSeq, missed: 0, bootstrap: true, serverTime: nowMs() });
+          return;
+        }
+
         // Fast path: data already available -> answer now.
         const now = buffer.since(since, config.pollMaxBatch);
         if (now.events.length || now.missed) {

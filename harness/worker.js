@@ -116,6 +116,7 @@ async function longpollLoop(c) {
       }
       for (const ev of json.events) onEvent(c, ev);
       if (json.tailSeq != null) c.cursor = json.tailSeq;
+      else await sleep(100); // stream has produced nothing yet; don't spin on bootstrap
     } catch {
       if (recording) stats.errors++;
       await sleep(250); // don't spin against a dead server

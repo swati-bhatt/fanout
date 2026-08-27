@@ -24,6 +24,12 @@ const fastify = Fastify({ logger: false }); // logging would add overhead and sk
 fastify.server.requestTimeout = 0;
 fastify.server.headersTimeout = 0;
 
+// Disable Nagle on every HTTP socket. The ws library does this internally, but raw Node HTTP
+// sockets leave Nagle ON — small SSE frames then sit in the kernel interacting with delayed ACKs
+// (~40ms tail spikes), which would silently bias the comparison toward WebSocket. Found via the
+// harness: SSE p95 jumped 47ms at only 50 clients, in ~40ms multiples — the classic signature.
+fastify.server.on('connection', (socket) => socket.setNoDelay(true));
+
 // --- HTTP byte accounting (wire-level, incl. headers) + permissive CORS for the M2 React page ---
 function routeTransport(url) {
   if (url.startsWith('/poll-debounced')) return 'pollDebounced';
