@@ -36,8 +36,7 @@ if (tier === 'mini') {
   console.error('unknown --tier (mini|full)');
   process.exit(1);
 }
-// 43xx range: clear of well-known dev services (3000 vite, 3306 mysql, 5432 pg, 6379 redis...)
-scenarios.forEach((s, i) => (s.port = 4310 + (i % 500)));
+// ports are bind-probed dynamically per run (see harness/run.js freePort) -- no static ranges
 
 // --only=transport:clients:rate re-runs a single cell (e.g. after a transient failure) and
 // appends it to the same summary.csv
@@ -55,7 +54,7 @@ if (only) {
 
 const CSV = `${ROOT}results/summary.csv`;
 const HEADER =
-  'finishedAt,transport,clients,rate,payloadBytes,pollIntervalMs,durationSec,latSamples,p50ms,p90ms,p95ms,p99ms,p999ms,maxMs,deliveryRatio,missedRate,wireBytesPerClient,appBytesPerClient,reqPerClientPerSec,serverCpuPct,serverRssMaxMB,serverLoopP99ms,serverBackpressure,generatorLoopP99ms,generatorLimited,errors,reconnects,runId\n';
+  'finishedAt,transport,clients,rate,payloadBytes,pollIntervalMs,durationSec,latSamples,p50ms,p90ms,p95ms,p99ms,p999ms,maxMs,deliveryRatio,missedRate,wireBytesPerClient,appBytesPerClient,reqPerClientPerSec,serverCpuPct,serverRssMaxMB,serverLoopP99SliceMaxMs,serverLoopP99SliceMedMs,clampedSubResolution,serverBackpressure,generatorLoopP99ms,generatorLimited,errors,reconnects,runId\n';
 
 function row(r) {
   const s = r.scenario;
@@ -65,7 +64,7 @@ function row(r) {
     L.count ?? 0, L.p50 ?? '', L.p90 ?? '', L.p95 ?? '', L.p99 ?? '', L.p999 ?? '', L.max ?? '',
     r.delivery.deliveryRatio ?? '', r.delivery.missedRate,
     r.serverWire.bytesPerClient, r.client.appBytesPerClient, r.client.reqPerClientPerSec,
-    r.server.cpuPct, r.server.rssMaxMB, r.server.loopDelayP99Ms, r.serverWire.backpressure,
+    r.server.cpuPct, r.server.rssMaxMB, r.server.loopDelayP99SliceMaxMs, r.server.loopDelayP99SliceMedMs, L.clampedSubResolution ?? 0, r.serverWire.backpressure,
     r.generator.loopDelayP99Ms, r.generator.generatorLimited, r.client.errors, r.client.reconnects, r.runId,
   ].join(',') + '\n';
 }
@@ -83,7 +82,7 @@ for (let i = 0; i < scenarios.length; i++) {
     appendFileSync(CSV, row(r));
     const L = r.latencyMs;
     console.log(
-      `${tag} -> p50=${L.p50}ms p95=${L.p95}ms p99=${L.p99}ms ratio=${r.delivery.deliveryRatio} wireB/cl=${r.serverWire.bytesPerClient} cpu=${r.server.cpuPct}% loopP99=${r.server.loopDelayP99Ms}ms${r.generator.generatorLimited ? ' GENERATOR-LIMITED' : ''}`,
+      `${tag} -> p50=${L.p50}ms p95=${L.p95}ms p99=${L.p99}ms ratio=${r.delivery.deliveryRatio} wireB/cl=${r.serverWire.bytesPerClient} cpu=${r.server.cpuPct}% loopP99max=${r.server.loopDelayP99SliceMaxMs}/med=${r.server.loopDelayP99SliceMedMs}ms${r.generator.generatorLimited ? ' GENERATOR-LIMITED' : ''}`,
     );
   } catch (e) {
     failed++;

@@ -12,12 +12,20 @@ export class Histogram {
     this.buckets = new Uint32Array(NBUCKETS);
     this.count = 0;
     this.sum = 0;
+    this.clamped = 0;
     this.min = Infinity;
     this.max = 0;
   }
 
   record(ms) {
-    if (!Number.isFinite(ms) || ms < 0) return; // clock skew guard: never record negative latency
+    if (!Number.isFinite(ms)) return;
+    if (ms < 0) {
+      // Residual cross-process clock skew (see src/clock.js): clamp to 0 and COUNT it, so the
+      // sample stays in the distribution and the result reports how often the resolution floor
+      // was hit. Silently dropping these censored 31.8% of one SSE run -- the fastest samples.
+      this.clamped++;
+      ms = 0;
+    }
     this.count++;
     this.sum += ms;
     if (ms < this.min) this.min = ms;
@@ -33,6 +41,7 @@ export class Histogram {
     for (let i = 0; i < NBUCKETS; i++) this.buckets[i] += other.buckets[i];
     this.count += other.count;
     this.sum += other.sum;
+    this.clamped += other.clamped;
     if (other.min < this.min) this.min = other.min;
     if (other.max > this.max) this.max = other.max;
   }
@@ -57,6 +66,7 @@ export class Histogram {
     const r = (x) => (x == null ? null : +x.toFixed(3));
     return {
       count: this.count,
+      clampedSubResolution: this.clamped,
       mean: r(this.sum / this.count),
       min: r(this.min),
       p50: r(this.percentile(50)),
@@ -73,6 +83,7 @@ export class Histogram {
       buckets: Array.from(this.buckets),
       count: this.count,
       sum: this.sum,
+      clamped: this.clamped,
       min: this.min === Infinity ? null : this.min,
       max: this.max,
     };
@@ -83,6 +94,7 @@ export class Histogram {
     j.buckets.forEach((v, i) => (h.buckets[i] = v));
     h.count = j.count;
     h.sum = j.sum;
+    h.clamped = j.clamped ?? 0;
     h.min = j.min ?? Infinity;
     h.max = j.max;
     return h;

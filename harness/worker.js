@@ -92,7 +92,10 @@ async function pollLoop(c, path, adaptive) {
         stats.appBytes += bytes;
       }
       for (const ev of json.events) onEvent(c, ev);
-      if (json.tailSeq != null) c.cursor = json.tailSeq;
+      // advance to the last event actually RECEIVED -- not tailSeq, which would skip any
+      // batch-capped backlog and then miscount the skipped events as loss
+      if (json.events.length) c.cursor = json.events[json.events.length - 1].seq;
+      else if (json.tailSeq != null) c.cursor = json.tailSeq;
       c.idle = json.events.length ? 0 : c.idle + 1;
       if (adaptive && json.nextPollMs != null) waitMs = Math.min(Math.max(json.nextPollMs, 10), 10000);
     } catch {
@@ -115,7 +118,8 @@ async function longpollLoop(c) {
         stats.appBytes += bytes;
       }
       for (const ev of json.events) onEvent(c, ev);
-      if (json.tailSeq != null) c.cursor = json.tailSeq;
+      if (json.events.length) c.cursor = json.events[json.events.length - 1].seq;
+      else if (json.tailSeq != null) c.cursor = json.tailSeq;
       else await sleep(100); // stream has produced nothing yet; don't spin on bootstrap
     } catch {
       if (recording) stats.errors++;

@@ -8,6 +8,7 @@
 //   node harness/run.js --transport=ws --clients=500 --rate=20 --duration=20
 import { spawn, fork } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { Histogram } from './histogram.js';
@@ -35,6 +36,21 @@ async function waitHealthy(url, timeoutMs) {
   }
 }
 
+// Always bind-probe for a free port instead of trusting a static allocation: a fixed port can
+// collide with well-known services (3306 bit us) or -- worse -- an ORPHANED server from a killed
+// earlier run, which then silently serves the benchmark (this happened: a killed sweep left a
+// server alive and a later cell measured it). Belt AND suspenders: the instanceId assertion below.
+function freePort(host) {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.on('error', reject);
+    srv.listen(0, host, () => {
+      const port = srv.address().port;
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
 const withTimeout = (p, ms, what) =>
   Promise.race([p, sleep(ms).then(() => Promise.reject(new Error(`timeout: ${what}`)))]);
 
@@ -53,7 +69,7 @@ export async function runScenario(sc) {
     pollIntervalMs: sc.pollIntervalMs ?? 1000,
     durationSec: sc.durationSec ?? 20,
     warmupSec: sc.warmupSec ?? 5,
-    port: sc.port ?? 4210,
+    port: sc.port ?? (await freePort('127.0.0.1')),
     host: '127.0.0.1',
   };
   const runId = `${cfg.transport}-c${cfg.clients}-r${cfg.rate}-${Date.now()}`;
@@ -73,6 +89,9 @@ export async function runScenario(sc) {
     await waitHealthy(`${base}/healthz`, 10000).catch((e) => {
       throw new Error(`server failed to start: ${e.message}\n${serverErr}`);
     });
+    const who = await getJson(`${base}/healthz`);
+    if (who.instanceId !== runId)
+      throw new Error(`port ${cfg.port} answered as "${who.instanceId}" (expected ${runId}) -- orphaned server from an earlier run; kill it before benchmarking`);
 
     // 2. producer
     const producer = spawn(
@@ -127,6 +146,8 @@ export async function runScenario(sc) {
     const t1 = Date.now();
     clearInterval(sampler);
     const m1 = await getJson(`${base}/metrics`);
+    if (m0.instanceId !== runId || m1.instanceId !== runId)
+      throw new Error(`metrics answered by "${m0.instanceId}"/"${m1.instanceId}" (expected ${runId})`);
     const wres = await withTimeout(resultsP, 15000, 'workers did not report');
     workers.forEach((w) => w.send({ cmd: 'shutdown' }));
 
@@ -169,8 +190,15 @@ export async function runScenario(sc) {
         connectFailures: tot.connectFailures,
       },
       serverWire: {
-        bytesSent: s1.bytesSent - s0.bytesSent, // socket-level for HTTP (incl headers); app-level for sse/ws
-        bytesPerClient: Math.round((s1.bytesSent - s0.bytesSent) / cfg.clients),
+        bytesSent: s1.bytesSent - s0.bytesSent, // HTTP: socket-level incl headers; sse/ws: app frames only
+        // bytesPerClient uses ONE semantics for every transport: socket-level wire bytes.
+        // HTTP transports measure that directly in bytesSent; sse/ws use the socket bytesWritten
+        // gauge (incl framing + heartbeats), falling back to app bytes only if the gauge is absent.
+        bytesPerClient: Math.round(
+          ((s1.liveWireBytes != null && s0.liveWireBytes != null
+            ? s1.liveWireBytes - s0.liveWireBytes
+            : s1.bytesSent - s0.bytesSent)) / cfg.clients,
+        ),
         wireGaugeDelta: s1.liveWireBytes != null && s0.liveWireBytes != null ? s1.liveWireBytes - s0.liveWireBytes : null,
         requests: s1.requests - s0.requests,
         eventsDelivered: s1.eventsDelivered - s0.eventsDelivered,
@@ -181,13 +209,28 @@ export async function runScenario(sc) {
       server: {
         cpuPct: +((cpuUs / 1e6 / wallSec) * 100).toFixed(1),
         rssMaxMB: +(Math.max(...all.map((s) => s.process.memory.rss)) / 1e6).toFixed(1),
-        loopDelayP99Ms: +Math.max(...[...samples, m1].map((s) => s.process.eventLoopDelayMs.p99)).toFixed(2),
+        // eld resets per 2s scrape, so each sample is one slice's p99. Max-of-slices is an
+        // UPWARD-biased worst-slice figure; report the median slice alongside so a single burst
+        // can't masquerade as the run's typical behavior.
+        loopDelayP99SliceMaxMs: +Math.max(...[...samples, m1].map((s) => s.process.eventLoopDelayMs.p99)).toFixed(2),
+        loopDelayP99SliceMedMs: +(() => {
+          const v = [...samples, m1].map((s) => s.process.eventLoopDelayMs.p99).sort((a, b) => a - b);
+          return v[(v.length - 1) >> 1];
+        })().toFixed(2),
       },
       generator: {
         workers: nWorkers,
         loopDelayP99Ms: +genP99.toFixed(2),
         // If the LOAD GENERATOR's own loop stalled >50ms, client-side latency numbers are suspect.
         generatorLimited: genP99 > 50,
+      },
+      serverKnobs: {
+        wsHeartbeatMs: process.env.WS_HEARTBEAT_MS ?? '15000',
+        sseHeartbeatMs: process.env.SSE_HEARTBEAT_MS ?? '15000',
+        pollMinMs: process.env.POLL_MIN_MS ?? '50',
+        pollMaxMs: process.env.POLL_MAX_MS ?? '5000',
+        pollMaxBatch: process.env.POLL_MAX_BATCH ?? '1000',
+        bufferSize: process.env.BUFFER_SIZE ?? '10000',
       },
       finishedAt: new Date().toISOString(),
     };
@@ -234,7 +277,7 @@ if (isMain) {
   });
   const L = res.latencyMs;
   console.log(
-    `[${res.runId}] p50=${L.p50}ms p95=${L.p95}ms p99=${L.p99}ms | delivered=${res.delivery.events} (ratio ${res.delivery.deliveryRatio}) missed=${res.delivery.missed} | wireB/client=${res.serverWire.bytesPerClient} | srvCPU=${res.server.cpuPct}% rss=${res.server.rssMaxMB}MB loopP99=${res.server.loopDelayP99Ms}ms | genP99=${res.generator.loopDelayP99Ms}ms${res.generator.generatorLimited ? ' GENERATOR-LIMITED' : ''}`,
+    `[${res.runId}] p50=${L.p50}ms p95=${L.p95}ms p99=${L.p99}ms | delivered=${res.delivery.events} (ratio ${res.delivery.deliveryRatio}) missed=${res.delivery.missed} | wireB/client=${res.serverWire.bytesPerClient} | srvCPU=${res.server.cpuPct}% rss=${res.server.rssMaxMB}MB loopSliceMax=${res.server.loopDelayP99SliceMaxMs}ms med=${res.server.loopDelayP99SliceMedMs}ms clamped=${res.latencyMs.clampedSubResolution ?? 0} | genP99=${res.generator.loopDelayP99Ms}ms${res.generator.generatorLimited ? ' GENERATOR-LIMITED' : ''}`,
   );
   console.log(`result -> results/${res.runId}.json`);
   process.exit(0);
