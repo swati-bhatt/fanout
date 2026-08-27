@@ -1,0 +1,30 @@
+# Flaky-network rig: the fanout server in a Linux container whose egress can be shaped with netem.
+#
+#   docker compose -f docker/compose.yml up -d --build
+#   ./docker/netem.sh wifi          # apply a profile
+#   node harness/netem-run.js --transport=ws --clients=500 --profile=wifi
+#   ./docker/netem.sh clear
+#
+# Redis stays on the HOST (already running there) and the producer/clients run on the host too, so
+# every timestamp comes from one clock. Only the server crosses into the container.
+services:
+  fanout-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: fanout-netem
+    # NET_ADMIN is what lets `tc qdisc` run inside the container; without it netem is refused.
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "3900:3000"
+    environment:
+      PORT: "3000"
+      HOST: "0.0.0.0"
+      # host.docker.internal resolves to the macOS host from inside the VM
+      REDIS_URL: "redis://host.docker.internal:6379"
+      INSTANCE_ID: "fanout-netem"
+      CHANNEL: "${CHANNEL:-events}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: "no"
