@@ -10,7 +10,7 @@
 // clock (src/clock.js). Only the server sits behind the impaired link.
 //
 //   node harness/netem-run.js --transport=ws --clients=500 --rate=20 --profile=wifi
-import { spawn, fork } from 'node:child_process';
+import { spawn, fork, execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -40,7 +40,9 @@ const cfg = {
   host: argv.host || '127.0.0.1',
   port: Number(argv.port || 3900),
   profile: argv.profile || 'unknown',
-  channel: argv.channel || process.env.CHANNEL || 'events',
+  // Unique per run by default: a fixed channel lets a leftover producer from an earlier run poison
+  // this one (see the recreate step below).
+  channel: argv.channel || `netem-${Date.now()}`,
   // The rig runs its own Redis (the host's binds to 127.0.0.1 with protected-mode on and is not
   // reachable from a container). The server talks to it over the compose network; the host-side
   // producer reaches the same instance through the published port.
@@ -63,13 +65,69 @@ const withTimeout = (p, ms, what) =>
 
 const kids = [];
 try {
-  // The container must already be up; an impaired link makes a slow health check normal, so allow
-  // generous time before declaring it absent.
-  const health = await withTimeout(getJson(`${base}/healthz`), 20000, 'container server not reachable').catch(() => null);
+  // FRESH SERVER PER RUN. run.js spawns a new server for every scenario; this runner reuses a
+  // long-lived container, and without a reset that difference silently corrupts results: the
+  // server's ring buffer retains previous runs' events while each new producer restarts `seq` at 0,
+  // violating the buffer's monotonic-sequence assumption. Cursor-based transports (poll,
+  // poll-debounced, longpoll) then read stale events and report absurd latency (~96 s) and
+  // delivery ratios of 15-22x, while sse/ws — which join at the live tail — look fine. Observed
+  // exactly that way before this reset existed.
+  //
+  // Restarting recreates the network namespace and therefore DROPS the netem qdisc, so the profile
+  // must be applied AFTER the restart, not before. That ordering is why the profile is applied here
+  // per-run rather than once per profile block.
+  // Recreate (not merely restart) so the server comes up subscribed to a channel unique to THIS
+  // run. run.js already isolates every scenario by channel; the netem rig originally reused a fixed
+  // "events" channel, and a single leftover producer from an interrupted run kept publishing to it
+  // — two producers, each numbering from seq 0, corrupted the buffer's ordering and produced
+  // delivery ratios of 18-22x. Per-run channels make a stray producer harmless instead of silent.
+  if (!argv.noReset) {
+    try {
+      execFileSync(
+        'docker',
+        ['compose', '-f', 'docker/compose.yml', 'up', '-d', '--force-recreate', '--no-deps', 'fanout-server'],
+        { cwd: ROOT, env: { ...process.env, CHANNEL: cfg.channel }, stdio: 'ignore' },
+      );
+    } catch (e) {
+      console.error(`could not recreate container: ${e.message}`);
+      process.exit(1);
+    }
+  }
+
+  // An impaired link makes a slow health check normal, so allow generous time before giving up.
+  // Each ATTEMPT needs its own timeout, not just the overall loop: while the container restarts,
+  // Docker's port proxy accepts the TCP connection but never answers, and fetch has no default
+  // timeout — so a single hung attempt would block the retry loop until the outer deadline and
+  // report the server as unreachable even though it came back seconds later. Observed exactly that.
+  const health = await withTimeout(
+    (async () => {
+      for (;;) {
+        const h = await fetch(`${base}/healthz`, { signal: AbortSignal.timeout(2000) })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null);
+        if (h) return h;
+        await sleep(300);
+      }
+    })(),
+    60000,
+    'container server not reachable',
+  ).catch(() => null);
   if (!health) {
     console.error(`no server at ${base} — start it with:  docker compose -f docker/compose.yml up -d --build`);
     process.exit(1);
   }
+
+  // Apply the impairment now that the namespace exists again.
+  if (!argv.noReset && cfg.profile !== 'unknown') {
+    try {
+      execFileSync('bash', ['docker/netem.sh', cfg.profile], { cwd: ROOT, stdio: 'ignore' });
+    } catch (e) {
+      console.error(`could not apply netem profile ${cfg.profile}: ${e.message}`);
+      process.exit(1);
+    }
+    await sleep(500); // let the qdisc settle before traffic starts
+  }
+
   const runId = `netem-${cfg.profile}-${cfg.transport}-c${cfg.clients}-r${cfg.rate}-${Date.now()}`;
 
   // Producer on the host, publishing to the same channel the container subscribes to.

@@ -69,15 +69,10 @@ let failed = 0;
 const t0 = Date.now();
 
 for (const profile of PROFILES) {
-  try {
-    sh('bash', ['docker/netem.sh', profile]);
-  } catch (e) {
-    console.error(`[netem-sweep] could not apply profile ${profile}: ${e.message}`);
-    failed += TRANSPORTS.length * reps;
-    continue;
-  }
-  // Let the qdisc settle and in-flight sockets drain before measuring under the new conditions.
-  await new Promise((r) => setTimeout(r, 3000));
+  // The profile is applied by netem-run.js AFTER it restarts the container (a restart recreates
+  // the network namespace and drops the qdisc), so the sweep no longer applies it here — doing so
+  // would only shape the interval between runs.
+  console.log(`[netem-sweep] profile ${profile}`);
 
   for (let rep = 0; rep < reps; rep++) {
     const order = TRANSPORTS.map((_, i) => TRANSPORTS[(i + rep) % TRANSPORTS.length]);
