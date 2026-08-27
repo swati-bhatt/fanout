@@ -36,7 +36,22 @@ if (tier === 'mini') {
   console.error('unknown --tier (mini|full)');
   process.exit(1);
 }
-scenarios.forEach((s, i) => (s.port = 3300 + (i % 500)));
+// 43xx range: clear of well-known dev services (3000 vite, 3306 mysql, 5432 pg, 6379 redis...)
+scenarios.forEach((s, i) => (s.port = 4310 + (i % 500)));
+
+// --only=transport:clients:rate re-runs a single cell (e.g. after a transient failure) and
+// appends it to the same summary.csv
+let only = argv.only;
+if (only) {
+  const [t, c, r] = only.split(':');
+  const keep = scenarios.filter((s) => s.transport === t && s.clients === Number(c) && s.rate === Number(r));
+  if (!keep.length) {
+    console.error(`--only=${only} matches no scenario in tier ${tier}`);
+    process.exit(1);
+  }
+  scenarios.length = 0;
+  scenarios.push(...keep);
+}
 
 const CSV = `${ROOT}results/summary.csv`;
 const HEADER =

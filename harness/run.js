@@ -53,7 +53,7 @@ export async function runScenario(sc) {
     pollIntervalMs: sc.pollIntervalMs ?? 1000,
     durationSec: sc.durationSec ?? 20,
     warmupSec: sc.warmupSec ?? 5,
-    port: sc.port ?? 3210,
+    port: sc.port ?? 4210,
     host: '127.0.0.1',
   };
   const runId = `${cfg.transport}-c${cfg.clients}-r${cfg.rate}-${Date.now()}`;
