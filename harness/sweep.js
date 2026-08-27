@@ -128,7 +128,12 @@ for (let i = 0; i < queue.length; i++) {
     failed++;
     console.error(`${tag} FAILED: ${e.message}`);
   }
-  await new Promise((res) => setTimeout(res, 2000)); // cooldown so TIME_WAIT and CPU settle
+  // Cooldown scales with fleet size. Each run leaves `clients` sockets in TIME_WAIT (~30s on
+  // macOS, not tunable without sudo); at 10k that is a fifth of the ephemeral port range still
+  // held when the next run starts, and back-to-back large runs exhaust it — observed as
+  // "clients failed to connect" on a 10k cell whose standalone run had succeeded minutes earlier.
+  const cooldownMs = sc.clients >= 5000 ? 30000 : sc.clients >= 2000 ? 8000 : 2000;
+  await new Promise((res) => setTimeout(res, cooldownMs));
 }
 console.log(
   `[sweep:${tier}] done — ${queue.length - failed}/${queue.length} ok in ${Math.round((Date.now() - t0) / 60000)} min. CSV: results/summary.csv`,

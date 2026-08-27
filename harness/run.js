@@ -104,7 +104,10 @@ export async function runScenario(sc) {
     // 3. workers (parallel load generators)
     const nWorkers = Math.max(1, Math.min(os.availableParallelism() - 2, 8, cfg.clients));
     const per = splitClients(cfg.clients, nWorkers);
-    const rampMs = Math.min(5000, Math.max(500, cfg.clients * 2));
+    // Ramp scales with fleet size: 10k connections opened over 5s is 2k/s, which on macOS burns
+    // through the ephemeral port range faster than TIME_WAIT recycles it. 0.5ms/client keeps the
+    // open rate near 2k/s for small fleets but stretches to ~10s at 10k.
+    const rampMs = Math.min(10000, Math.max(500, cfg.clients));
     const workers = per.map(() => fork(new URL('./worker.js', import.meta.url), { cwd: ROOT }));
     kids.push(...workers);
     for (const w of workers)
@@ -127,7 +130,10 @@ export async function runScenario(sc) {
         },
       }),
     );
-    await withTimeout(allReady, 60000, 'clients failed to connect');
+    // Connect budget must scale with the fleet: a flat 60s is ample at 500 clients and far too
+    // tight at 10k, where the ramp alone is 10s and each connection may retry behind a saturated
+    // accept queue. 20ms/client => 200s at 10k, 60s floor below 3k.
+    await withTimeout(allReady, Math.max(60000, cfg.clients * 20), 'clients failed to connect');
 
     // 4. warmup (excluded from stats), then measure
     await sleep(cfg.warmupSec * 1000);
