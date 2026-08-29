@@ -1,0 +1,567 @@
+<title>Fanout First Light</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --ground: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e;
+    --muted: #898781; --grid: #e1e0d9; --baseline: #c3c2b7; --border: rgba(11,11,11,0.10);
+    --accent: #2a78d6;
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4;
+    --good: #0ca30c; --good-text: #006300; --critical: #d03b3b; --warn: #ec835a;
+    --tick: #c3c2b7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7;
+      --muted: #898781; --grid: #2c2c2a; --baseline: #383835; --border: rgba(255,255,255,0.10);
+      --accent: #3987e5;
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181;
+      --good: #0ca30c; --good-text: #0ca30c; --critical: #d03b3b; --warn: #ec835a;
+      --tick: #383835;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7;
+    --muted: #898781; --grid: #2c2c2a; --baseline: #383835; --border: rgba(255,255,255,0.10);
+    --accent: #3987e5;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181;
+    --good: #0ca30c; --good-text: #0ca30c; --critical: #d03b3b; --warn: #ec835a;
+    --tick: #383835;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--ground); color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    font-size: 15.5px; line-height: 1.62; margin: 0; padding: 0 20px 96px;
+  }
+  .page { max-width: 900px; margin: 0 auto; }
+  .mono { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; }
+  h1, h2, h3 {
+    font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", system-ui, sans-serif;
+    font-weight: 600; line-height: 1.12; text-wrap: balance; margin: 0;
+  }
+  h1 { font-size: 46px; letter-spacing: -0.01em; }
+  h2 { font-size: 26px; margin: 0 0 6px; }
+  p { max-width: 65ch; margin: 0 0 14px; }
+  a { color: var(--accent); }
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace; font-size: 11.5px; font-weight: 600;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent);
+  }
+  .section-eyebrow { color: var(--muted); margin-bottom: 6px; }
+  header { padding: 64px 0 0; }
+  .runmeta {
+    font-family: "IBM Plex Mono", monospace; font-size: 12.5px; color: var(--ink-2);
+    display: flex; flex-wrap: wrap; gap: 6px 22px; margin-top: 14px;
+  }
+  .runmeta b { color: var(--ink); font-weight: 600; }
+  .graticule {
+    height: 22px; margin: 26px 0 0;
+    background:
+      repeating-linear-gradient(90deg, var(--tick) 0 1px, transparent 1px 8px) left bottom / 100% 7px no-repeat,
+      repeating-linear-gradient(90deg, var(--tick) 0 1px, transparent 1px 40px) left bottom / 100% 14px no-repeat,
+      repeating-linear-gradient(90deg, var(--ink) 0 1px, transparent 1px 200px) left bottom / 100% 22px no-repeat;
+  }
+  section { margin-top: 62px; }
+  .lede { font-size: 17.5px; color: var(--ink-2); }
+  .lede b, .lede strong { color: var(--ink); }
+
+  .correction {
+    margin-top: 26px; background: var(--surface); border: 1px solid var(--border);
+    border-left: 3px solid var(--warn); border-radius: 6px; padding: 16px 20px;
+  }
+  .correction .k {
+    font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--warn);
+  }
+  .correction p { margin: 6px 0 0; font-size: 14.5px; color: var(--ink-2); max-width: 72ch; }
+  .correction b { color: var(--ink); }
+
+  .verdict { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-top: 22px; }
+  .verdict-card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 16px 18px 14px; }
+  .verdict-card .k {
+    font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+  }
+  .verdict-card .v { font-family: "IBM Plex Sans Condensed", sans-serif; font-size: 29px; font-weight: 600; margin: 4px 0 2px; }
+  .verdict-card .d { font-size: 13.5px; color: var(--ink-2); line-height: 1.45; }
+
+  .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 20px 20px 14px; margin-top: 20px; position: relative; }
+  .chart-sub { font-size: 13px; color: var(--ink-2); margin: 2px 0 10px; max-width: 72ch; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 4px 0 10px; }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--ink-2); }
+  .legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+  svg { display: block; width: 100%; height: auto; }
+  svg text { font-family: "IBM Plex Mono", ui-monospace, monospace; fill: var(--muted); font-size: 11px; }
+  svg .lbl { fill: var(--ink); font-weight: 600; font-size: 11.5px; }
+  svg .note { fill: var(--ink-2); font-size: 11px; font-family: "IBM Plex Sans", sans-serif; }
+  .tip {
+    position: absolute; pointer-events: none; background: var(--ink); color: var(--ground);
+    font-family: "IBM Plex Mono", monospace; font-size: 12px; line-height: 1.5;
+    padding: 8px 11px; border-radius: 5px; opacity: 0; z-index: 5; white-space: nowrap;
+  }
+  @media (prefers-reduced-motion: no-preference) { .tip { transition: opacity 0.12s; } }
+  .tip .tt { font-weight: 600; }
+  .tip .row { display: flex; gap: 10px; justify-content: space-between; }
+
+  .findings { margin: 18px 0 0; padding: 0; list-style: none; display: grid; gap: 14px; }
+  .findings li { max-width: 72ch; padding-left: 20px; position: relative; }
+  .findings li::before { content: ""; position: absolute; left: 0; top: 9px; width: 9px; height: 9px; border-radius: 2px; background: var(--accent); }
+
+  .ledger { display: grid; gap: 10px; margin-top: 18px; }
+  .ledger-row {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    padding: 13px 16px; display: grid; grid-template-columns: 92px 1fr; gap: 14px; align-items: start;
+  }
+  .chip {
+    font-family: "IBM Plex Mono", monospace; font-size: 10.5px; font-weight: 600;
+    letter-spacing: 0.08em; padding: 3px 8px; border-radius: 4px; display: inline-block; margin-top: 2px; text-align: center;
+  }
+  .chip-bug { color: var(--critical); border: 1px solid var(--critical); }
+  .chip-ok { color: var(--good-text); border: 1px solid var(--good); }
+  .chip-warn { color: var(--warn); border: 1px solid var(--warn); }
+  .ledger-row .t { font-weight: 600; }
+  .ledger-row .d { font-size: 13.5px; color: var(--ink-2); line-height: 1.5; }
+
+  .tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; margin-top: 18px; }
+  table { border-collapse: collapse; width: 100%; font-family: "IBM Plex Mono", monospace; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 8px 13px; text-align: right; white-space: nowrap; border-top: 1px solid var(--grid); }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; border-top: none; }
+  th:first-child, td:first-child { text-align: left; }
+  tbody tr:hover { background: color-mix(in oklab, var(--accent) 6%, transparent); }
+  .yes { color: var(--good-text); font-weight: 600; }
+  .no { color: var(--warn); font-weight: 600; }
+  .dim { color: var(--muted); }
+
+  .method { font-size: 14.5px; color: var(--ink-2); }
+  .method b { color: var(--ink); }
+  .method li { margin-bottom: 8px; max-width: 72ch; }
+  .next { display: grid; gap: 8px; margin-top: 16px; font-size: 15px; }
+  .next .step { display: grid; grid-template-columns: 30px 1fr; gap: 12px; align-items: baseline; }
+  .next .n { font-family: "IBM Plex Mono", monospace; font-weight: 600; color: var(--accent); }
+  footer { margin-top: 80px; font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--muted); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<div class="page">
+  <header>
+    <div class="eyebrow">fanout &middot; live-update transport benchmark</div>
+    <h1 style="margin-top:10px">Same speed,<br>different failure</h1>
+    <div class="runmeta">
+      <span>campaign <b>211 runs &middot; 35 cells</b></span>
+      <span>date <b>2026-08-27</b></span>
+      <span>replicates <b>n=3&ndash;8</b></span>
+      <span>clients <b>50 &rarr; 10k</b></span>
+      <span>rates <b>1 / 20 / 100 ev/s</b></span>
+      <span>network <b>5 netem profiles</b></span>
+    </div>
+    <div class="graticule" aria-hidden="true"></div>
+  </header>
+
+  <section>
+    <p class="lede" style="margin-top:0">
+      One trivial event stream, served five ways &mdash; short poll, adaptive poll, long poll,
+      Server-Sent Events, WebSocket &mdash; measured end-to-end with replicates across client count,
+      event rate, and five network-impairment profiles. The headline is not which transport is
+      fastest. It is <b>how each one fails</b>: push transports lose events, polling only gets
+      staler, and a bad network erases most of the difference between them.
+    </p>
+
+    <div class="correction">
+      <div class="k">correction &middot; supersedes the single-run mini-sweep</div>
+      <p>
+        An earlier version of this page reported single-run measurements. Replication refuted three
+        of its headline claims: WebSocket does <b>not</b> beat SSE by 25&times; on tails (their medians
+        are identical), long poll did <b>not</b> lose 3.8% of events at 2000 clients (it lost none),
+        and adaptive polling's p99 there was <b>47 ms, not 470 ms</b>. Those figures were inflated
+        3&ndash;35&times; by a machine that had not fully settled. Every number below is a median
+        across replicates with its spread shown. The retraction stays visible on purpose: it is the
+        strongest evidence that the instrument now works.
+      </p>
+    </div>
+
+    <div class="verdict">
+      <div class="verdict-card">
+        <div class="k">at 10,000 clients</div>
+        <div class="v">only poll survives</div>
+        <div class="d">Fixed polling delivers 99.9% of events. Every push transport drops data: SSE 82.8%, WS 85.4%, long poll 21.1%.</div>
+      </div>
+      <div class="verdict-card">
+        <div class="k">sse vs ws &middot; c&le;2000</div>
+        <div class="v">17.2 ms both</div>
+        <div class="d">Identical median p99 at every load and under every network profile. They are not competitors on speed.</div>
+      </div>
+      <div class="verdict-card">
+        <div class="k">clean &rarr; satellite</div>
+        <div class="v">54&times; &rarr; 2.5&times;</div>
+        <div class="d">Impairment compresses the gap between transports. Your choice matters most on a <em>good</em> network.</div>
+      </div>
+      <div class="verdict-card">
+        <div class="k">adaptive poll &middot; c=5000</div>
+        <div class="v">15.5 s p99</div>
+        <div class="d">Its 50 ms floor turns busy clients into a self-inflicted DDoS. Dominated at every rate and scale tested.</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow section-eyebrow">chart 01</div>
+    <h2>Latency, with its uncertainty</h2>
+    <p class="chart-sub">Median p99 across replicates at 20 ev/s, log scale. <b>The whisker is the finding</b> &mdash; it spans the minimum and maximum p99 seen across runs of the same cell. A short whisker means the number is reproducible; a long one means a single run would have told you almost anything.</p>
+    <div class="chart-card" id="c1">
+      <div class="legend" id="legend1"></div>
+      <svg id="svg-lat" viewBox="0 0 860 360" role="img" aria-label="median p99 latency by client count with min-max whiskers across replicates"></svg>
+      <div class="tip" id="tip1"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow section-eyebrow">chart 02</div>
+    <h2>How each transport fails</h2>
+    <p class="chart-sub">Share of emitted events that actually reached clients, at 5000 and 10000 concurrent connections. Left dot is 5000, right dot is 10000; the connector shows which direction scale moves each transport. Polling barely moves. The push transports and long poll fall off.</p>
+    <div class="chart-card" id="c2">
+      <svg id="svg-deliv" viewBox="0 0 860 280" role="img" aria-label="delivery ratio at 5000 versus 10000 clients per transport"></svg>
+      <div class="tip" id="tip2"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow section-eyebrow">chart 03</div>
+    <h2>A bad network is the great leveller</h2>
+    <p class="chart-sub">Median p50 under five impairment profiles, ordered by injected one-way delay (clean, Wi-Fi 20 ms, lossy 30 ms + 3% correlated loss, mobile 60 ms, satellite 300 ms). The lines converge: on a clean link the transports span 60&times;, under satellite conditions just 2.5&times;.</p>
+    <div class="chart-card" id="c3">
+      <svg id="svg-netem" viewBox="0 0 860 330" role="img" aria-label="median p50 latency across five network impairment profiles"></svg>
+      <div class="tip" id="tip3"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow section-eyebrow">chart 04</div>
+    <h2>How cost scales with event rate</h2>
+    <p class="chart-sub">Server CPU at 500 clients as the stream gets busier. The persistent transports climb gently; long poll climbs toward a full core because it degenerates to one HTTP round trip per event; fixed polling is nearly flat, since its request rate is set by the clock rather than by the events.</p>
+    <div class="chart-card" id="c4">
+      <svg id="svg-cpu" viewBox="0 0 860 320" role="img" aria-label="server CPU versus event rate at 500 clients"></svg>
+      <div class="tip" id="tip4"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow section-eyebrow">findings</div>
+    <h2>What the replicated data says</h2>
+    <ul class="findings">
+      <li><b>Failure mode, not speed, is what separates these transports.</b> At 10,000 clients fixed polling still delivers 99.9% of events at 47.6% CPU, while SSE drops 17.2%, WebSocket 14.6%, and long poll 78.9%. Polling's load is bounded by the clock, so overload makes it <em>staler</em>; push transports must deliver every event to every client, so overload makes them <em>lose data</em>. Graceful degradation is polling's real advantage, and it is invisible until you push past the knee.</li>
+      <li><b>SSE and WebSocket are tied on speed and separated by variance.</b> Median p99 is identical at 50, 500, and 2000 clients (4.7/5.8 ms, 10.75 ms, 17.15 ms) and identical under every network profile. What differs is reproducibility: WebSocket's spread is 1.07&ndash;1.54&times; where SSE's is 3.16&ndash;11.55&times; at 20 ev/s &mdash; though at 100 ev/s the ordering reverses. Neither is uniformly steadier, and a single-run benchmark would confidently report whichever regime it happened to sample.</li>
+      <li><b>Impairment compresses the differences.</b> On a clean link the transports span 60&times; in p50 (504.8 ms vs 8.4 ms); under satellite conditions they span 2.5&times; (964.7 vs 378.6). Once round-trip time dominates sampling delay, the protocol stops mattering. The practical inversion: transport choice pays off most on <em>good</em> networks, least on bad ones &mdash; the opposite of the usual instinct to reach for WebSocket because the network is poor.</li>
+      <li><b>Fixed polling never gets slower, only staler.</b> Its p99 was 1036.633 ms in every run at every client count up to 5000 &mdash; identical to three decimals, exactly the analytic sampling-delay model (p50 &asymp; interval&frasl;2). It is also the cheapest server-side option at every rate tested.</li>
+      <li><b>&ldquo;Polling wastes bandwidth&rdquo; is false on a busy stream.</b> At 100 ev/s fixed poll moved 599 KB/client &mdash; essentially identical to WebSocket's 598 KB &mdash; because one poll per second batches ~100 events and the per-response header cost amortizes away. Polling is wasteful on <em>quiet</em> streams, where it pays full HTTP overhead for empty answers. That inverts the usual telling.</li>
+      <li><b>Long poll's cost is proportional to rate &times; clients.</b> It delivers one event per round trip by construction (measured: exactly 1.00 events/response), so CPU climbs 4.8% &rarr; 37.9% &rarr; 94.7% as the rate goes 1 &rarr; 20 &rarr; 100 ev/s. Cheapest transport on a quiet stream; the first to collapse on a busy one, and the worst at scale by a wide margin.</li>
+      <li><b>Adaptive polling is dominated at every rate and every scale.</b> At 1 ev/s it is worst-of-both: 3.7&times; fixed poll's bytes and 2.3&times; its CPU while still 835 ms stale. At scale its floor turns N busy clients into N&frasl;floor requests per second &mdash; a self-inflicted DDoS that reaches a 15.5 s p99 at 5000 clients. No regime in this study favours it.</li>
+      <li><b>The decision rule.</b> Below the knee and freshness matters &rarr; SSE or WebSocket, chosen on API shape and tail predictability. Above the knee, or when losing events is unacceptable &rarr; fixed polling, which trades staleness for completeness. Quiet stream, no persistent connections available &rarr; long poll. On a genuinely bad network &rarr; pick on operational grounds, because the latency difference has mostly evaporated. Adaptive polling &rarr; never, at these rates.</li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="eyebrow section-eyebrow">instrument log</div>
+    <h2>What the harness caught before publishing</h2>
+    <p class="chart-sub">Every entry was found by the apparatus questioning its own output &mdash; through validation runs, an adversarial audit, or replication. Four plausible-sounding explanations were tested and <em>refuted</em>, and are recorded so they stay out of the findings.</p>
+    <div class="ledger">
+      <div class="ledger-row"><span class="chip chip-warn">retracted</span><div><div class="t">Three headline claims, refuted by replication</div><div class="d">&ldquo;WS beats SSE 25&times;,&rdquo; &ldquo;long poll loses 3.8% of events,&rdquo; and &ldquo;adaptive poll collapses to 470 ms&rdquo; all came from single runs on a machine still settling. Replicated: medians identical, zero loss, 47 ms.</div></div></div>
+      <div class="ledger-row"><span class="chip chip-bug">fixed</span><div><div class="t">Clock skew censored the fastest 31.8% of an SSE run</div><div class="d">Per-process calibration error (~0.3&ndash;1.5 ms) made sub-millisecond latencies negative and the histogram silently dropped them &mdash; biasing SSE against itself. Now: median-of-301 calibration against the shared system clock, plus clamp-and-count. The ~0.5 ms residual is the stated resolution floor.</div></div></div>
+      <div class="ledger-row"><span class="chip chip-bug">fixed</span><div><div class="t">Nagle's algorithm silently favoured WebSocket</div><div class="d">The ws library sets TCP_NODELAY internally; raw Node HTTP sockets do not. SSE tails sat at 40 ms delayed-ACK multiples until setNoDelay was applied to every socket &rarr; p95 fell from 47 ms to 2.8 ms.</div></div></div>
+      <div class="ledger-row"><span class="chip chip-bug">fixed</span><div><div class="t">Two orphaned producers poisoned the impairment rig</div><div class="d">Cleanup patterns matched absolute paths while producers are spawned with a relative one, so strays survived &mdash; one for over three hours. Two producers on a shared channel, each numbering from zero, corrupted the server's ring buffer and produced 96-second &ldquo;latencies&rdquo; and delivery ratios of 15&ndash;22&times;. Fixed by giving every impairment run its own container and its own channel, matching the isolation the main harness already had. That isolation is why the 161 main runs were never at risk.</div></div></div>
+      <div class="ledger-row"><span class="chip chip-bug">fixed</span><div><div class="t">An orphaned server served a benchmark cell</div><div class="d">A killed sweep left a server alive; a later cell bound to its port and measured the wrong process (confirmed via lsof). Every run now gets a bind-probed port and asserts the responder's instance ID matches the run it launched.</div></div></div>
+      <div class="ledger-row"><span class="chip chip-bug">fixed</span><div><div class="t">Poll cursor manufactured phantom loss</div><div class="d">Advancing to the server's tail skipped batch-capped backlog and double-charged it as &ldquo;missed.&rdquo; Regression test: batch cap 10 at 30 ev/s now yields delivery ratio exactly &frac13; with zero false loss &mdash; starvation correctly distinguished from drop.</div></div></div>
+      <div class="ledger-row"><span class="chip chip-warn">limit</span><div><div class="t">C10K, hit on the client side</div><div class="d">A 10000-client cell failed to connect although the identical scenario had succeeded standalone minutes earlier. Each run leaves ~10k sockets in TIME_WAIT (~30 s on macOS, not tunable without sudo), consuming the ~49k ephemeral port range. Ramp, connect budget, and cooldown now scale with fleet size &mdash; but WebSocket at 10000 still fails to establish intermittently, which is why its cell carries a 7.5&times; spread.</div></div></div>
+      <div class="ledger-row"><span class="chip chip-warn">gap</span><div><div class="t">The resilience axis was never exercised</div><div class="d">Zero reconnects and zero missed events in all 50 impairment runs, including 3% correlated loss &mdash; TCP absorbed everything. That is a real result about these impairment levels, not evidence of transport robustness. Hard link cuts (the <span class="mono">flapping</span> profile) are what would test reconnect and resync, and have not been run.</div></div></div>
+      <div class="ledger-row"><span class="chip chip-ok">refuted</span><div><div class="t">Ruled out with evidence</div><div class="d">permessage-deflate (off by default in ws 8), GC pauses (traced), heartbeat-burst as the stall cause (failed replication under rank-sum), and SSE frame-rebuild unfairness (allocation profile symmetric where it matters).</div></div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow section-eyebrow">data</div>
+    <h2>Every cell, with its stability verdict</h2>
+    <p class="chart-sub">A cell earns <span class="yes">stable</span> only at n&ge;3 <b>and</b> p99 spread &le;2&times;. <span class="no">unstable</span> cells are shown, not hidden &mdash; they mark where this instrument cannot yet support a claim. 18 of 35 qualify; the collapse cells are mostly unstable, which is expected of a system past its knee.</p>
+    <div class="tablewrap">
+      <table id="datatable" aria-label="aggregated results per cell with stability verdict"></table>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow section-eyebrow">methodology</div>
+    <h2>How to read these numbers</h2>
+    <ul class="method">
+      <li><b>Apples-to-apples by construction.</b> One producer stamps every event with a sequence number and a high-resolution timestamp; all five transports carry the same stream; latency = receive &minus; emit per event, loss = sequence gaps &mdash; computed identically for every transport.</li>
+      <li><b>Median, not mean.</b> A single contaminated run shifts a mean and barely moves a median. Every figure is the median across replicates, with the observed min&ndash;max alongside.</li>
+      <li><b>Replicates are interleaved, not blocked.</b> Each round runs every cell once before repeating, rotating order &mdash; so drift and background noise land on all transports equally instead of confounding one.</li>
+      <li><b>Resolution floor ~0.5 ms.</b> Cross-process timestamps are calibrated against the shared system clock. Differences smaller than that are below the instrument's resolution and are not claims.</li>
+      <li><b>Impairment is egress-only.</b> netem shapes server&rarr;client, so a polling transport's request leg stays fast: any polling disadvantage measured under impairment is a <em>lower</em> bound. A container's virtual NIC also adds ~0.1&ndash;0.5 ms, which is why the <span class="mono">clean</span> profile is measured in-container as the baseline rather than compared against host loopback.</li>
+      <li><b>Closed-loop load.</b> Clients wait for a response before re-requesting, so overload appears as latency and self-throttling rather than unbounded queueing. An open-loop fleet would do more damage &mdash; read the collapse figures as lower bounds.</li>
+      <li><b>Single instance, single host.</b> Redis fan-out means K servers could run; every number here is one process on one machine, and the load generator shares that machine. Horizontal scaling is demonstrated as a design property, not measured.</li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="eyebrow section-eyebrow">next</div>
+    <h2>What would finish this</h2>
+    <div class="next">
+      <div class="step"><span class="n">01</span><span><b>The resilience axis</b> &mdash; hard link cuts rather than loss and delay, to exercise reconnect, resync-from-last-sequence, and missed-update accounting. It is the one dimension the current impairment matrix leaves untouched.</span></div>
+      <div class="step"><span class="n">02</span><span><b>A second machine</b> &mdash; moving the load generator off the server's host removes the client-side port ceiling that currently caps the scale tier, and would let the 10k cells reach the stability bar the rest of the data clears.</span></div>
+      <div class="step"><span class="n">03</span><span><b>The write-up</b> &mdash; the frontier, the measured crossovers, and the variance result, which is the contribution a single-run study structurally cannot produce.</span></div>
+    </div>
+  </section>
+
+  <footer>
+    fanout &middot; github.com/swati-bhatt/fanout &middot; 161 sweep runs + 50 impairment runs &middot; data/ in repo
+  </footer>
+</div>
+
+<script>
+(() => {
+  const T = [
+    { key: "poll",           name: "poll (1s)",      c: "--s1" },
+    { key: "poll-debounced", name: "poll-debounced", c: "--s2" },
+    { key: "longpoll",       name: "longpoll",       c: "--s3" },
+    { key: "sse",            name: "sse",            c: "--s4" },
+    { key: "ws",             name: "ws",             c: "--s5" },
+  ];
+  const CLIENTS = [50, 500, 2000, 5000, 10000];
+  // [median, min, max] p99 across replicates, 20 ev/s
+  const LAT = {
+    "poll":           [[1036.633,1036.633,1036.633],[1036.633,1036.633,1036.633],[1036.633,1036.633,1036.633],[1036.633,1036.633,1036.633],[1036.633,1036.633,8976.871]],
+    "poll-debounced": [[54.247,54.247,54.247],[52.364,50.481,83.536],[54.247,50.481,111.397],[15489.051,9646.616,19809.568],[18434.23,17154.379,35226.947]],
+    "longpoll":       [[7.774,7.234,8.354],[10.366,10.366,30.505],[62.643,46.976,198.096],[437.144,138.237,673.17],[191.219,159.634,198.096]],
+    "sse":            [[5.829,4.698,54.247],[10.753,9.647,30.505],[17.154,17.154,83.536],[103.663,40.679,198.096],[341.803,212.875,406.794]],
+    "ws":             [[4.698,4.698,5.425],[10.753,8.977,13.824],[17.154,15.963,17.154],[32.781,28.387,2128.752],[777.365,582.942,4371.445]],
+  };
+  const DELIV = { // [at 5000, at 10000], cpu [5000, 10000]
+    "poll":           {d:[0.999,0.999], cpu:[41,47.55]},
+    "poll-debounced": {d:[0.913,0.953], cpu:[84.3,68.45]},
+    "longpoll":       {d:[0.435,0.211], cpu:[73.3,67.15]},
+    "sse":            {d:[1.000,0.828], cpu:[67.3,97.65]},
+    "ws":             {d:[0.947,0.854], cpu:[54.7,88]},
+  };
+  const PROFILES = ["clean","wifi","lossy","mobile","satellite"];
+  const PROFILE_DELAY = ["0 ms","20 ms","30 ms +3% loss","60 ms","300 ms"];
+  const NETEM = { // p50 medians, ordered by injected delay
+    "poll":           [504.8,542.5,542.5,626.4,964.7],
+    "poll-debounced": [26.4,54.2,72.3,119.7,469.8],
+    "longpoll":       [8.4,37.5,32.8,89.8,453.5],
+    "sse":            [9.3,24.6,35.2,67.3,378.6],
+    "ws":             [8.4,24.6,35.2,62.6,378.6],
+  };
+  const RATES = [1,20,100];
+  const CPU = {
+    "poll":[7.6,10.7,12.9], "poll-debounced":[17.3,41.05,36.7], "longpoll":[4.8,37.9,94.7],
+    "sse":[1.7,19.15,27.8], "ws":[1.7,17.55,29.9],
+  };
+  const CELLS = [
+    ["poll",50,20,5,504.807,1036.633,"1.00",85,5.7,"1.000",true],
+    ["poll-debounced",50,20,5,26.416,54.247,"1.00",216,12.7,"1.000",true],
+    ["longpoll",50,20,5,3.051,7.774,"1.15",211,12.3,"1.000",true],
+    ["sse",50,20,5,1.981,5.829,"11.55",87,5.3,"1.000",false],
+    ["ws",50,20,5,2.288,4.698,"1.15",80,5.6,"1.000",true],
+    ["poll",500,20,8,504.807,1036.633,"1.00",85,10.7,"1.000",true],
+    ["poll-debounced",500,20,8,25.499,52.364,"1.65",217,41.1,"1.000",true],
+    ["longpoll",500,20,8,4.068,10.366,"2.94",211,37.9,"0.999",false],
+    ["sse",500,20,8,5.627,10.753,"3.16",87,19.2,"1.000",false],
+    ["ws",500,20,8,5.048,10.753,"1.54",80,17.6,"1.000",true],
+    ["poll",2000,20,5,504.807,1036.633,"1.00",85,23.3,"0.999",true],
+    ["poll-debounced",2000,20,5,26.416,54.247,"2.21",217,74.6,"0.999",false],
+    ["longpoll",2000,20,5,17.154,62.643,"4.22",211,127.5,"1.000",false],
+    ["sse",2000,20,5,9.647,17.154,"4.87",87,27.0,"1.000",false],
+    ["ws",2000,20,5,8.354,17.154,"1.07",80,28.7,"1.000",true],
+    ["poll",5000,20,3,504.807,1036.633,"1.00",128,41.0,"0.999",true],
+    ["poll-debounced",5000,20,4,326.933,15489.051,"2.05",178,84.3,"0.913",false],
+    ["longpoll",5000,20,5,83.536,437.144,"4.87",104,73.3,"0.435",false],
+    ["sse",5000,20,5,19.810,103.663,"4.87",131,67.3,"1.000",false],
+    ["ws",5000,20,5,14.855,32.781,"74.99",122,54.7,"0.947",false],
+    ["poll",10000,20,4,504.807,1036.633,"8.66",126,47.6,"0.999",false],
+    ["poll-debounced",10000,20,4,3522.695,18434.230,"2.05",138,68.5,"0.953",false],
+    ["longpoll",10000,20,4,90.001,191.219,"1.24",54,67.2,"0.211",true],
+    ["sse",10000,20,4,77.737,341.803,"1.91",111,97.7,"0.828",true],
+    ["ws",10000,20,3,128.640,777.365,"7.50",114,88.0,"0.854",false],
+    ["poll",500,1,3,504.807,1036.633,"1.00",16,7.6,"1.000",true],
+    ["poll-debounced",500,1,3,352.269,835.363,"1.00",58,17.3,"1.000",true],
+    ["longpoll",500,1,3,12.864,40.679,"1.43",16,4.8,"1.000",true],
+    ["sse",500,1,3,7.234,21.288,"3.92",6.5,1.7,"1.000",false],
+    ["ws",500,1,3,6.264,24.582,"1.78",6,1.7,"1.000",true],
+    ["poll",500,100,3,504.807,1036.633,"1.00",599,12.9,"0.999",true],
+    ["poll-debounced",500,100,3,26.416,103.663,"5.62",794,36.7,"1.000",false],
+    ["longpoll",500,100,3,14.855,103.663,"10.00",1364,94.7,"1.000",false],
+    ["sse",500,100,3,2.458,30.505,"1.33",653,27.8,"1.000",true],
+    ["ws",500,100,3,1.981,72.339,"2.94",598,29.9,"1.000",false],
+  ];
+
+  const NS="http://www.w3.org/2000/svg";
+  const el=(t,a,p)=>{const n=document.createElementNS(NS,t);for(const[k,v]of Object.entries(a))n.setAttribute(k,v);if(p)p.appendChild(n);return n;};
+  const fmt=(v)=> v==null?"n/a": v>=1000?(v/1000).toFixed(1)+"s": v>=100?Math.round(v)+"ms": v.toFixed(1)+"ms";
+  const tipShow=(tip,card,e,html)=>{
+    tip.innerHTML=html;
+    const cr=card.getBoundingClientRect();
+    tip.style.opacity=1;
+    let x=e.clientX-cr.left+14;
+    if(x+tip.offsetWidth>cr.width-8) x=e.clientX-cr.left-tip.offsetWidth-14;
+    tip.style.left=x+"px"; tip.style.top=(e.clientY-cr.top+14)+"px";
+  };
+  const hide=(tip)=>()=>tip.style.opacity=0;
+
+  // Direct labels sit at each line's endpoint, but converging lines stack their labels on top of
+  // one another -- most acutely in the impairment chart, where convergence IS the finding. Nudge
+  // them apart vertically, preserving their vertical order so each still reads against its line.
+  const placeLabels=(svg,x,items)=>{
+    const MIN=17; // > the 11.5px face's full bbox height incl. descenders ("poll-debounced")
+    items.sort((a,b)=>a.y-b.y);
+    for(let i=1;i<items.length;i++) if(items[i].y-items[i-1].y<MIN) items[i].y=items[i-1].y+MIN;
+    for(const it of items) el("text",{x,y:it.y,class:"lbl"},svg).textContent=it.text;
+  };
+
+  const legend=document.getElementById("legend1");
+  for(const t of T){const s=document.createElement("span");const i=document.createElement("i");i.style.background=`var(${t.c})`;s.append(i,document.createTextNode(t.name));legend.appendChild(s);}
+
+  const LOGMAX=40000;
+  const ly=(v,top,h)=> top + (1 - Math.log10(Math.max(v,1))/Math.log10(LOGMAX))*h;
+
+  // ---- chart 1: latency vs scale, whiskers ----
+  {
+    const svg=document.getElementById("svg-lat"),W=860,H=360,L=54,R=116,TT=14,B=40;
+    const iw=W-L-R, ih=H-TT-B;
+    const xs=CLIENTS.map((_,i)=>L+(i*iw)/(CLIENTS.length-1));
+    for(const tick of [1,10,100,1000,10000]){
+      const y=ly(tick,TT,ih);
+      el("line",{x1:L,x2:W-R,y1:y,y2:y,stroke:"var(--grid)","stroke-width":1},svg);
+      el("text",{x:L-8,y:y+4,"text-anchor":"end"},svg).textContent = tick>=1000?(tick/1000)+"s":tick+"ms";
+    }
+    el("line",{x1:L,x2:W-R,y1:TT+ih,y2:TT+ih,stroke:"var(--baseline)","stroke-width":1},svg);
+    CLIENTS.forEach((c,i)=>{el("text",{x:xs[i],y:H-16,"text-anchor":"middle"},svg).textContent=c>=1000?(c/1000)+"k":c;});
+    el("text",{x:(L+W-R)/2,y:H-2,"text-anchor":"middle"},svg).textContent="concurrent clients";
+    const card=document.getElementById("c1"),tip=document.getElementById("tip1"),labels=[];
+    for(const t of T){
+      const d=LAT[t.key];
+      d.forEach((v,i)=>{
+        const yT=ly(v[2],TT,ih),yB=ly(v[1],TT,ih);
+        if(Math.abs(yB-yT)>1.5) el("line",{x1:xs[i],x2:xs[i],y1:yT,y2:yB,stroke:`var(${t.c})`,"stroke-width":6,opacity:0.22,"stroke-linecap":"round"},svg);
+      });
+      el("path",{d:"M"+d.map((v,i)=>xs[i].toFixed(1)+","+ly(v[0],TT,ih).toFixed(1)).join("L"),fill:"none",stroke:`var(${t.c})`,"stroke-width":2,"stroke-linejoin":"round"},svg);
+      d.forEach((v,i)=>{
+        const dot=el("circle",{cx:xs[i],cy:ly(v[0],TT,ih),r:4.5,fill:`var(${t.c})`,stroke:"var(--surface)","stroke-width":2},svg);
+        dot.addEventListener("mousemove",(e)=>tipShow(tip,card,e,
+          `<div class="tt">${t.name} &middot; ${CLIENTS[i]} clients</div>
+           <div class="row"><span>median p99</span><b>${fmt(v[0])}</b></div>
+           <div class="row"><span>range</span><b>${fmt(v[1])} – ${fmt(v[2])}</b></div>
+           <div class="row"><span>spread</span><b>${(v[2]/v[1]).toFixed(2)}×</b></div>`));
+        dot.addEventListener("mouseleave",hide(tip));
+      });
+      labels.push({text:t.name,y:ly(d[d.length-1][0],TT,ih)+4});
+    }
+    placeLabels(svg,xs[xs.length-1]+11,labels);
+  }
+
+  // ---- chart 2: delivery dumbbell ----
+  {
+    const svg=document.getElementById("svg-deliv"),W=860,H=280,L=150,R=120,TT=22,B=42;
+    const iw=W-L-R, ih=H-TT-B;
+    const dx=(v)=>L+v*iw;
+    for(const g of [0,0.25,0.5,0.75,1]){
+      el("line",{x1:dx(g),x2:dx(g),y1:TT,y2:TT+ih,stroke:"var(--grid)","stroke-width":1},svg);
+      el("text",{x:dx(g),y:H-18,"text-anchor":"middle"},svg).textContent=(g*100)+"%";
+    }
+    el("text",{x:(L+W-R)/2,y:H-2,"text-anchor":"middle"},svg).textContent="share of emitted events actually delivered";
+    el("text",{x:L,y:14,"text-anchor":"start",class:"note"},svg).textContent="○ 5,000 clients      ● 10,000 clients";
+    const rows=[...T].sort((a,b)=>DELIV[b.key].d[1]-DELIV[a.key].d[1]);
+    const step=ih/rows.length;
+    const card=document.getElementById("c2"),tip=document.getElementById("tip2");
+    rows.forEach((t,i)=>{
+      const y=TT+step*(i+0.5);
+      const a=DELIV[t.key].d[0], b=DELIV[t.key].d[1];
+      el("text",{x:L-12,y:y+4,"text-anchor":"end",class:"lbl"},svg).textContent=t.name;
+      el("line",{x1:dx(Math.min(a,b)),x2:dx(Math.max(a,b)),y1:y,y2:y,stroke:"var(--s1)","stroke-width":3,opacity:0.30,"stroke-linecap":"round"},svg);
+      el("circle",{cx:dx(a),cy:y,r:6,fill:"var(--surface)",stroke:"var(--s1)","stroke-width":2.5},svg);
+      const dot=el("circle",{cx:dx(b),cy:y,r:6,fill:"var(--s1)",stroke:"var(--surface)","stroke-width":2},svg);
+      el("text",{x:dx(b)+(b>0.5?14:14),y:y+4,class:"lbl"},svg).textContent=(b*100).toFixed(1)+"%";
+      const show=(e)=>tipShow(tip,card,e,
+        `<div class="tt">${t.name}</div>
+         <div class="row"><span>5,000 clients</span><b>${(a*100).toFixed(1)}%</b></div>
+         <div class="row"><span>10,000 clients</span><b>${(b*100).toFixed(1)}%</b></div>
+         <div class="row"><span>cpu @10k</span><b>${DELIV[t.key].cpu[1]}%</b></div>`);
+      dot.addEventListener("mousemove",show); dot.addEventListener("mouseleave",hide(tip));
+    });
+    el("line",{x1:L,x2:L,y1:TT,y2:TT+ih,stroke:"var(--baseline)","stroke-width":1},svg);
+  }
+
+  // ---- chart 3: impairment convergence ----
+  {
+    const svg=document.getElementById("svg-netem"),W=860,H=330,L=54,R=116,TT=14,B=52;
+    const iw=W-L-R, ih=H-TT-B;
+    const xs=PROFILES.map((_,i)=>L+(i*iw)/(PROFILES.length-1));
+    const y3=(v)=>TT+(1-Math.log10(Math.max(v,1))/Math.log10(2000))*ih;
+    for(const tick of [1,10,100,1000]){
+      const y=y3(tick);
+      el("line",{x1:L,x2:W-R,y1:y,y2:y,stroke:"var(--grid)","stroke-width":1},svg);
+      el("text",{x:L-8,y:y+4,"text-anchor":"end"},svg).textContent=tick>=1000?"1s":tick+"ms";
+    }
+    el("line",{x1:L,x2:W-R,y1:TT+ih,y2:TT+ih,stroke:"var(--baseline)","stroke-width":1},svg);
+    PROFILES.forEach((p,i)=>{
+      el("text",{x:xs[i],y:H-26,"text-anchor":"middle",class:"lbl"},svg).textContent=p;
+      el("text",{x:xs[i],y:H-12,"text-anchor":"middle"},svg).textContent=PROFILE_DELAY[i];
+    });
+    const card=document.getElementById("c3"),tip=document.getElementById("tip3"),labels=[];
+    for(const t of T){
+      const d=NETEM[t.key];
+      el("path",{d:"M"+d.map((v,i)=>xs[i].toFixed(1)+","+y3(v).toFixed(1)).join("L"),fill:"none",stroke:`var(${t.c})`,"stroke-width":2,"stroke-linejoin":"round"},svg);
+      d.forEach((v,i)=>{
+        const dot=el("circle",{cx:xs[i],cy:y3(v),r:4.5,fill:`var(${t.c})`,stroke:"var(--surface)","stroke-width":2},svg);
+        dot.addEventListener("mousemove",(e)=>tipShow(tip,card,e,
+          `<div class="tt">${t.name} &middot; ${PROFILES[i]}</div><div class="row"><span>median p50</span><b>${fmt(v)}</b></div>`));
+        dot.addEventListener("mouseleave",hide(tip));
+      });
+      labels.push({text:t.name,y:y3(d[d.length-1])+4});
+    }
+    placeLabels(svg,xs[xs.length-1]+11,labels);
+  }
+
+  // ---- chart 4: CPU vs rate ----
+  {
+    const svg=document.getElementById("svg-cpu"),W=860,H=320,L=54,R=116,TT=14,B=42;
+    const iw=W-L-R, ih=H-TT-B;
+    const xs=RATES.map((_,i)=>L+(i*iw)/(RATES.length-1));
+    const cy=(v)=>TT+(1-v/110)*ih;
+    for(const g of [0,25,50,75,100]){
+      const y=cy(g);
+      el("line",{x1:L,x2:W-R,y1:y,y2:y,stroke:"var(--grid)","stroke-width":1},svg);
+      el("text",{x:L-8,y:y+4,"text-anchor":"end"},svg).textContent=g+"%";
+    }
+    el("line",{x1:L,x2:W-R,y1:cy(0),y2:cy(0),stroke:"var(--baseline)","stroke-width":1},svg);
+    el("line",{x1:L,x2:W-R,y1:cy(100),y2:cy(100),stroke:"var(--baseline)","stroke-width":1,"stroke-dasharray":"4 4"},svg);
+    el("text",{x:L+8,y:cy(100)-6,class:"note"},svg).textContent="one core";
+    RATES.forEach((r,i)=>{el("text",{x:xs[i],y:H-18,"text-anchor":"middle"},svg).textContent=r+" ev/s";});
+    el("text",{x:(L+W-R)/2,y:H-2,"text-anchor":"middle"},svg).textContent="event rate (500 clients)";
+    const card=document.getElementById("c4"),tip=document.getElementById("tip4"),labels=[];
+    for(const t of T){
+      const d=CPU[t.key];
+      el("path",{d:"M"+d.map((v,i)=>xs[i].toFixed(1)+","+cy(v).toFixed(1)).join("L"),fill:"none",stroke:`var(${t.c})`,"stroke-width":2,"stroke-linejoin":"round"},svg);
+      d.forEach((v,i)=>{
+        const dot=el("circle",{cx:xs[i],cy:cy(v),r:4.5,fill:`var(${t.c})`,stroke:"var(--surface)","stroke-width":2},svg);
+        dot.addEventListener("mousemove",(e)=>tipShow(tip,card,e,
+          `<div class="tt">${t.name} &middot; ${RATES[i]} ev/s</div><div class="row"><span>server CPU</span><b>${v}%</b></div>`));
+        dot.addEventListener("mouseleave",hide(tip));
+      });
+      labels.push({text:t.name,y:cy(d[d.length-1])+4});
+    }
+    placeLabels(svg,xs[xs.length-1]+11,labels);
+  }
+
+  // ---- table ----
+  {
+    const h=["transport","clients","ev/s","n","p50 ms","p99 ms","spread","wire KB/cl","cpu %","delivery","verdict"];
+    document.getElementById("datatable").innerHTML=
+      "<thead><tr>"+h.map(x=>`<th>${x}</th>`).join("")+"</tr></thead><tbody>"+
+      CELLS.map(r=>"<tr>"+r.map((c,i)=>{
+        if(i===10) return `<td class="${c?"yes":"no"}">${c?"stable":"unstable"}</td>`;
+        if(i===6) return `<td>${c}×</td>`;
+        if(i===9) return `<td class="${Number(c)<0.99?"no":""}">${c}</td>`;
+        return `<td>${c}</td>`;
+      }).join("")+"</tr>").join("")+"</tbody>";
+  }
+})();
+</script>
